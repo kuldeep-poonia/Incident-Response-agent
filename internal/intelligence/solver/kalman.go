@@ -274,7 +274,6 @@ func ObservationModel(s DynamicState, cfg EKFConfig) MeasurementVector {
 }
 
 func vectorToDynamicState(v StateVector) DynamicState { var s DynamicState; s.FromVector(v); return s }
-func dynamicStateToVector(s DynamicState) StateVector { return s.ToVector() }
 
 func choleskyInverse55(S [5][5]float64) ([5][5]float64, bool) {
 	var L [5][5]float64
