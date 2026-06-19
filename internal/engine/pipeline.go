@@ -14,7 +14,7 @@ type AutonomousEngine struct {
 	Telemetry *telemetry.Store
 	Topology  *topology.Graph
 
-	mu          sync.RWMutex
+	Mu          sync.RWMutex
 	Controllers map[string]*control.Controller
 	States      map[string]*control.SystemState
 	Memories    map[string]*control.RegimeMemory
@@ -50,8 +50,8 @@ func (e *AutonomousEngine) UpdateContext() topology.CriticalPath {
 
 // 3. GENERATE DECISION
 func (e *AutonomousEngine) GenerateDecision(serviceID string) (control.Bundle, *control.SystemState, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.Mu.Lock()
+	defer e.Mu.Unlock()
 
 	// Get localized data for the service
 	window := e.Telemetry.Window(serviceID, 60, 1*time.Minute)

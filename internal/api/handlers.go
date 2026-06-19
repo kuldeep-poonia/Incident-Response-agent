@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/qphysics/phaseshift/control"
 	"github.com/qphysics/phaseshift/internal/engine"
 	"github.com/qphysics/phaseshift/telemetry"
 )
@@ -39,7 +41,7 @@ func (a *API) HandleContext(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(cp)
 }
 
-// POST /decision/recommend
+// POST /decision/recommend (Legacy Monolithic Handler)
 func (a *API) HandleRecommend(w http.ResponseWriter, r *http.Request) {
 	var req struct { ServiceID string `json:"service_id"` }
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -53,7 +55,6 @@ func (a *API) HandleRecommend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Classify Risk for UiPath BPMN routing
 	riskLevel := "LOW"
 	reqHuman := false
 	if state.Risk > 50.0 { 
@@ -77,4 +78,132 @@ func (a *API) HandleRecommend(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+
+// ============================================================================
+// PHASE 5: MAESTRO INDEPENDENT AGENT ENDPOINTS
+// ============================================================================
+
+type MaestroRequest struct {
+	ServiceID string `json:"service_id"`
+}
+
+type MaestroSafetyRequest struct {
+	ServiceID string         `json:"service_id"`
+	Bundle    control.Bundle `json:"bundle"`
+}
+
+type MaestroRecommendRequest struct {
+	ServiceID  string                         `json:"service_id"`
+	Validation control.SafetyValidationResult `json:"validation"`
+}
+
+// POST /agent/predict
+func (a *API) HandleAgentPredict(w http.ResponseWriter, r *http.Request) {
+	var req MaestroRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.Engine.Mu.Lock()
+	defer a.Engine.Mu.Unlock()
+
+	ctrl := a.Engine.Controllers[req.ServiceID]
+	state := a.Engine.States[req.ServiceID]
+	mem := a.Engine.Memories[req.ServiceID]
+	window := a.Engine.Telemetry.Window(req.ServiceID, 60, 1*time.Minute)
+	
+	if window == nil || ctrl == nil {
+		http.Error(w, "insufficient telemetry or uninitialized", http.StatusBadRequest)
+		return
+	}
+
+	z := engine.AdaptWindowToMeasurement(window)
+	ctrl.AgentPredict(z, state, mem, 1.0)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(state)
+}
+
+// POST /agent/decide
+func (a *API) HandleAgentDecide(w http.ResponseWriter, r *http.Request) {
+	var req MaestroRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.Engine.Mu.Lock()
+	defer a.Engine.Mu.Unlock()
+
+	ctrl := a.Engine.Controllers[req.ServiceID]
+	state := a.Engine.States[req.ServiceID]
+	mem := a.Engine.Memories[req.ServiceID]
+
+	if ctrl == nil {
+		http.Error(w, "uninitialized", http.StatusBadRequest)
+		return
+	}
+
+	bundle := ctrl.AgentDecide(state, mem)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(bundle)
+}
+
+// POST /agent/safety
+func (a *API) HandleAgentSafety(w http.ResponseWriter, r *http.Request) {
+	var req MaestroSafetyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.Engine.Mu.Lock()
+	defer a.Engine.Mu.Unlock()
+
+	ctrl := a.Engine.Controllers[req.ServiceID]
+	state := a.Engine.States[req.ServiceID]
+
+	if ctrl == nil {
+		http.Error(w, "uninitialized", http.StatusBadRequest)
+		return
+	}
+
+	validation := ctrl.AgentSafety(req.Bundle, state)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(validation)
+}
+
+// POST /agent/recommend
+func (a *API) HandleAgentRecommend(w http.ResponseWriter, r *http.Request) {
+	var req MaestroRecommendRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.Engine.Mu.Lock()
+	defer a.Engine.Mu.Unlock()
+
+	ctrl := a.Engine.Controllers[req.ServiceID]
+	state := a.Engine.States[req.ServiceID]
+
+	if ctrl == nil {
+		http.Error(w, "uninitialized", http.StatusBadRequest)
+		return
+	}
+
+	recommendation := ctrl.AgentRecommend(req.Validation, state)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(recommendation)
+}
+
+// POST /agent/rca
+func (a *API) HandleAgentRCA(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "RCA Agent explicit delegator endpoint active", http.StatusNotImplemented)
 }
