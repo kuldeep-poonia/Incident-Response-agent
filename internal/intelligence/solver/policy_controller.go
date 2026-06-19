@@ -58,6 +58,7 @@ type Controller struct {
 	PredService *PredictionService
 	DecService  *DecisionService
 	SafeService *SafetyService
+	RecService  *RecommendationService
 	
 	SRObserver  *ServiceRateObserver
 
@@ -75,6 +76,7 @@ func NewController(baseSeed int64, minDeps, maxDeps int, ctrlCfg ControllerConfi
 		PredService:  NewPredictionService(ctrlCfg),
 		DecService:   NewDecisionService(DefaultOptimizerConfig()),
 		SafeService:  NewSafetyService(),
+		RecService:   NewRecommendationService(),
 		
 		SRObserver:   &ServiceRateObserver{CurrentServiceRate: 10.0},
 		LastDecision: Bundle{Replicas: minDeps, QueueLimit: 1000.0, RetryLimit: 3, CacheAggression: 0.0},
@@ -85,7 +87,16 @@ func NewController(baseSeed int64, minDeps, maxDeps int, ctrlCfg ControllerConfi
 	}
 }
 
+// Recommend remains for backward compatibility with AutonomousEngine tests.
+// It wraps the new explainable recommendation pipeline and extracts the raw bundle.
 func (c *Controller) Recommend(zTelemetry MeasurementVector, currentSysState *SystemState, mem *RegimeMemory, dt float64) Bundle {
+	rec := c.GenerateExplainableRecommendation(zTelemetry, currentSysState, mem, dt)
+	return rec.RecommendedBundle
+}
+
+// GenerateExplainableRecommendation is the new Maestro-ready API endpoint
+// that returns the fully structured, safety-verified, and explainable decision.
+func (c *Controller) GenerateExplainableRecommendation(zTelemetry MeasurementVector, currentSysState *SystemState, mem *RegimeMemory, dt float64) Recommendation {
 	if dt <= 0.0 { dt = c.CtrlCfg.DefaultIntegrationDt }
 
 	// 1 & 2. State Estimation via PredictionService
@@ -124,10 +135,15 @@ func (c *Controller) Recommend(zTelemetry MeasurementVector, currentSysState *Sy
 	optimalBundle := c.DecService.GenerateOptimalDecision(currentSysState, simCfg, mem, c.MasterSeed)
 
 	// 5. Mesh Ceiling Enforcements via SafetyService
-	optimalBundle = c.SafeService.ApplySafetyConstraints(optimalBundle, currentSysState, c.LastDecision)
+	validationResult := c.SafeService.ValidateAction(optimalBundle, currentSysState, c.LastDecision)
+	safeBundle := validationResult.SafeBundle
 
-	c.LastDecision = optimalBundle
+	// 6. Package Explainable Recommendation via RecommendationService
+	sysIdConfidence := c.PredService.SysID.Confidence()
+	recommendation := c.RecService.GenerateRecommendation(currentSysState, c.LastDecision, safeBundle, validationResult, sysIdConfidence)
+
+	c.LastDecision = safeBundle
 	c.MasterSeed++
 	
-	return optimalBundle
+	return recommendation
 }
