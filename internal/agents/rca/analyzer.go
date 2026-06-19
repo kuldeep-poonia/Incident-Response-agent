@@ -1,4 +1,4 @@
-package control
+package rca
 
 import (
 	"bytes"
@@ -12,9 +12,9 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// ============================================================================
+
 // GITHUB MODELS API SCHEMA (OpenAI Compatible)
-// ============================================================================
+
 type ChatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
@@ -35,9 +35,9 @@ type ChatResponse struct {
 	} `json:"choices"`
 }
 
-// ============================================================================
+
 // TELEMETRY PARSING SCHEMA (Matches chaos_simulation_test.go)
-// ============================================================================
+
 type TelemetryTick struct {
 	TimeSec         int     `json:"time_sec"`
 	Event           string  `json:"event"`
@@ -57,10 +57,10 @@ type TelemetryReport struct {
 	Ticks        []TelemetryTick `json:"ticks"`
 }
 
-// ============================================================================
+
 // CORE INCIDENT ANALYZER
-// ============================================================================
-func AnalyzeIncident(filePath string) error {
+
+func AnalyzeIncident(report TelemetryReport) error {
 	// 1. Load Environment Variables
 	err := godotenv.Load()
 	if err != nil {
@@ -72,17 +72,7 @@ func AnalyzeIncident(filePath string) error {
 		return fmt.Errorf("GITHUB_TOKEN not found in .env")
 	}
 
-	// 2. Read Local Telemetry
-	fmt.Printf("📂 Reading telemetry from %s...\n", filePath)
-	fileData, err := os.ReadFile(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to read telemetry file: %w", err)
-	}
-
-	var report TelemetryReport
-	if err := json.Unmarshal(fileData, &report); err != nil {
-		return fmt.Errorf("failed to parse JSON telemetry: %w", err)
-	}
+	
 
 	if len(report.Ticks) == 0 {
 		return fmt.Errorf("no telemetry data found in report")
@@ -194,11 +184,12 @@ finalTick.RetryPool, finalTick.PhysicalLatency, finalTick.RiskScore)
 	}
 
 	// 6. Print the Post-Mortem
-	fmt.Println("\n======================================================================================================================")
-	fmt.Println(" 🤖 AUTOMATED AI INCIDENT POST-MORTEM (DeepSeek-V3)")
-	fmt.Println("======================================================================================================================")
+	
+	fmt.Println(" AUTOMATED AI INCIDENT POST-MORTEM (DeepSeek-V3)")
+	
 	fmt.Println(chatResp.Choices[0].Message.Content)
-	fmt.Println("======================================================================================================================")
+	
 
 	return nil
 }
+

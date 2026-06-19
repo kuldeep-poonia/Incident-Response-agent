@@ -84,15 +84,3 @@ func (e *AutonomousEngine) GenerateDecision(serviceID string) (control.Bundle, *
 
 	return decision, state, nil
 }
-
-// ApplyExecution is called when UiPath actually executes the command to keep math synchronized
-func (e *AutonomousEngine) ApplyExecution(serviceID string, b control.Bundle) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if state, exists := e.States[serviceID]; exists {
-		state.Replicas = b.Replicas
-		state.QueueLimit = int(b.QueueLimit)
-		state.RetryLimit = b.RetryLimit
-		state.CacheAggression = b.CacheAggression
-	}
-}
