@@ -59,6 +59,7 @@ type Controller struct {
 	DecService  *DecisionService
 	SafeService *SafetyService
 	RecService  *RecommendationService
+	RcaService  *RCAService
 	
 	SRObserver  *ServiceRateObserver
 
@@ -77,6 +78,7 @@ func NewController(baseSeed int64, minDeps, maxDeps int, ctrlCfg ControllerConfi
 		DecService:   NewDecisionService(DefaultOptimizerConfig()),
 		SafeService:  NewSafetyService(),
 		RecService:   NewRecommendationService(),
+		RcaService:   NewRCAService(),
 		
 		SRObserver:   &ServiceRateObserver{CurrentServiceRate: 10.0},
 		LastDecision: Bundle{Replicas: minDeps, QueueLimit: 1000.0, RetryLimit: 3, CacheAggression: 0.0},

@@ -205,5 +205,36 @@ func (a *API) HandleAgentRecommend(w http.ResponseWriter, r *http.Request) {
 
 // POST /agent/rca
 func (a *API) HandleAgentRCA(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "RCA Agent explicit delegator endpoint active", http.StatusNotImplemented)
+	var req MaestroRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.Engine.Mu.RLock()
+	ctrl := a.Engine.Controllers[req.ServiceID]
+	statePtr := a.Engine.States[req.ServiceID]
+	cp := a.Engine.Topology.Snapshot().CriticalPath
+	
+	// Copy state to prevent race conditions when releasing lock for slow network I/O
+	var stateCopy control.SystemState
+	if statePtr != nil {
+		stateCopy = *statePtr
+	}
+	a.Engine.Mu.RUnlock()
+
+	if ctrl == nil || statePtr == nil {
+		http.Error(w, "uninitialized", http.StatusBadRequest)
+		return
+	}
+
+	// This is deliberately called OUTSIDE the lock because it's a slow network boundary call.
+	analysis, err := ctrl.RcaService.AnalyzeActiveIncident(cp, &stateCopy, req.ServiceID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(analysis)
 }
