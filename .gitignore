@@ -1,0 +1,21 @@
+# Go
+*.exe
+*.test
+coverage.out
+
+# env
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# builds
+bin/
+dist/
+
+# logs
+*.log
+
+# temp
+tmp/
