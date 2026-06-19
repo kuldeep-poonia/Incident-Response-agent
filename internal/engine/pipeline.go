@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qphysics/phaseshift/control"
-	"github.com/qphysics/phaseshift/telemetry"
-	"github.com/qphysics/phaseshift/topology"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/intelligence/solver"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/observability/telemetry"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/observability/topology"
 )
 
 type AutonomousEngine struct {

@@ -4,8 +4,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/qphysics/phaseshift/internal/api"
-	"github.com/qphysics/phaseshift/internal/engine"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/api"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/engine"
 )
 
 func main() {
@@ -17,7 +17,7 @@ func main() {
 	http.HandleFunc("/decision/recommend", serverAPI.HandleRecommend)
 	
 	// NEW: Exposing the DeepSeek-V3 Post-Mortem Agent
-	http.HandleFunc("/incident/rca", serverAPI.HandleRCA)
+	http.HandleFunc("/incident/rca", serverAPI.HandleAgentRCA)
 
 	log.Println("🤖 Agentic SRE Backend listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

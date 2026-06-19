@@ -99,19 +99,21 @@ func (c *Controller) Recommend(zTelemetry MeasurementVector, currentSysState *Sy
 // GenerateExplainableRecommendation is the new Maestro-ready API endpoint
 // that returns the fully structured, safety-verified, and explainable decision.
 func (c *Controller) GenerateExplainableRecommendation(zTelemetry MeasurementVector, currentSysState *SystemState, mem *RegimeMemory, dt float64) Recommendation {
+	c.AgentPredict(zTelemetry, currentSysState, mem, dt)
+	optimalBundle := c.AgentDecide(currentSysState, mem)
+	validationResult := c.AgentSafety(optimalBundle, currentSysState)
+	return c.AgentRecommend(validationResult, currentSysState)
+}
+
+func (c *Controller) AgentPredict(zTelemetry MeasurementVector, currentSysState *SystemState, mem *RegimeMemory, dt float64) {
 	if dt <= 0.0 { dt = c.CtrlCfg.DefaultIntegrationDt }
-
-	// 1 & 2. State Estimation via PredictionService
 	c.PredService.PredictCurrentState(&zTelemetry, currentSysState, c.LastDecision, dt)
-
 	currentActiveReplicas := currentSysState.Replicas
 	if currentActiveReplicas < 1 { currentActiveReplicas = 1 }
-
-	filteredCapacity := c.PredService.EKF.X[2] // Read raw capacity from the EKF state
+	filteredCapacity := c.PredService.EKF.X[2] 
 	currentSysState.ServiceRate = c.SRObserver.Observe([5]float64(zTelemetry), currentActiveReplicas, c.CtrlCfg)
 	currentSysState.Utilisation = currentSysState.PredictedArrival / math.Max(filteredCapacity, 0.001)
 
-	// Failure Mode detection
 	currentSysState.FailureMode = "Healthy"
 	if currentSysState.Latency > currentSysState.SLATarget * 5.0 {
 		if filteredCapacity < currentSysState.PredictedArrival * 0.5 {
@@ -121,31 +123,30 @@ func (c *Controller) GenerateExplainableRecommendation(zTelemetry MeasurementVec
 		}
 	}
 
-	// Risk calculation
 	qRisk := currentSysState.QueueDepth / math.Max(1.0, float64(c.LastDecision.QueueLimit))
 	lRisk := currentSysState.Latency / math.Max(0.001, currentSysState.SLATarget) 
 	rRisk := currentSysState.RetryPressure / 5.0 
 	currentSysState.Risk = qRisk + lRisk + rRisk 
 
 	if mem != nil { mem.Update(*currentSysState, currentSysState.SLATarget, 0.0, c.RegimeCfg) }
-
-	// 3. Online Learning (SysID) via PredictionService
 	c.PredService.UpdateModel(currentSysState, dt)
+}
 
-	// 4. Decision Generation & MPC Optimization via DecisionService
+func (c *Controller) AgentDecide(currentSysState *SystemState, mem *RegimeMemory) Bundle {
 	simCfg := c.PredService.GetSimConfig()
-	optimalBundle := c.DecService.GenerateOptimalDecision(currentSysState, simCfg, mem, c.MasterSeed)
+	return c.DecService.GenerateOptimalDecision(currentSysState, simCfg, mem, c.MasterSeed)
+}
 
-	// 5. Mesh Ceiling Enforcements via SafetyService
-	validationResult := c.SafeService.ValidateAction(optimalBundle, currentSysState, c.LastDecision)
+func (c *Controller) AgentSafety(optimalBundle Bundle, currentSysState *SystemState) SafetyValidationResult {
+	return c.SafeService.ValidateAction(optimalBundle, currentSysState, c.LastDecision)
+}
+
+func (c *Controller) AgentRecommend(validationResult SafetyValidationResult, currentSysState *SystemState) Recommendation {
 	safeBundle := validationResult.SafeBundle
-
-	// 6. Package Explainable Recommendation via RecommendationService
 	sysIdConfidence := c.PredService.SysID.Confidence()
 	recommendation := c.RecService.GenerateRecommendation(currentSysState, c.LastDecision, safeBundle, validationResult, sysIdConfidence)
 
 	c.LastDecision = safeBundle
 	c.MasterSeed++
-	
 	return recommendation
 }

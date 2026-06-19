@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qphysics/phaseshift/telemetry"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/observability/telemetry"
 )
 
 const (

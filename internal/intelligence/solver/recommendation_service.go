@@ -67,7 +67,7 @@ func (rs *RecommendationService) GenerateRecommendation(
 	}
 
 	// Calculate overall machine learning confidence
-	confidence := (sysIdConfidence.ArrivalProcess + sysIdConfidence.RetryProcess + sysIdConfidence.CapacityProcess) / 3.0
+	confidence := (sysIdConfidence.ArrivalProcess + sysIdConfidence.RetryProcess + sysIdConfidence.ContentionProcess + sysIdConfidence.Amplification) / 4.0
 	if confidence == 0 {
 		confidence = 0.8 // Base EKF initialization confidence fallback
 	}

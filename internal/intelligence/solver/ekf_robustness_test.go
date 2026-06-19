@@ -28,10 +28,10 @@ func TestEKF_ByzantineSensorSurvival(t *testing.T) {
 
 	for i, poison := range poisonPills {
 		// If the math shield fails, this will panic or permanently corrupt ekf.X
-		sysState = ctrl.Tick(poison, &sysState, mem, 1.0)
+		_ = ctrl.Recommend(poison, &sysState, mem, 1.0)
 		
 		for j := 0; j < 9; j++ {
-			if math.IsNaN(ctrl.EKF.X[j]) || math.IsInf(ctrl.EKF.X[j], 0) {
+			if math.IsNaN(ctrl.PredService.EKF.X[j]) || math.IsInf(ctrl.PredService.EKF.X[j], 0) {
 				t.Fatalf("CRITICAL VULNERABILITY: EKF Poisoned at step %d on state X[%d]", i, j)
 			}
 		}
@@ -46,9 +46,9 @@ func TestEKF_ModelRealityGapConvergence(t *testing.T) {
 	ctrl := NewController(42, 10, 100, DefaultControllerConfig())
 	
 	// Force the EKF to believe the system is perfectly healthy
-	ctrl.EKF.X[0] = 0.0     // Queue = 0
-	ctrl.EKF.X[1] = 0.0     // Retry = 0
-	ctrl.EKF.X[3] = 10.0    // Arrival = 10
+	ctrl.PredService.EKF.X[0] = 0.0     // Queue = 0
+	ctrl.PredService.EKF.X[1] = 0.0     // Retry = 0
+	ctrl.PredService.EKF.X[3] = 10.0    // Arrival = 10
 	
 	// Suddenly inject a catastrophic physical reality
 	disasterTelemetry := MeasurementVector{
@@ -60,13 +60,13 @@ func TestEKF_ModelRealityGapConvergence(t *testing.T) {
 	}
 
 	// Tick once
-	ctrl.EKF.Update(disasterTelemetry)
+	ctrl.PredService.EKF.Update(disasterTelemetry)
 
 	// ASSERTION: The EKF must abandon its nominal math and snap to the sensors
-	if ctrl.EKF.X[0] < 4000.0 {
-		t.Fatalf("EKF HALLUCINATION: Failed to snap Queue to reality. Believes: %.2f", ctrl.EKF.X[0])
+	if ctrl.PredService.EKF.X[0] < 4000.0 {
+		t.Fatalf("EKF HALLUCINATION: Failed to snap Queue to reality. Believes: %.2f", ctrl.PredService.EKF.X[0])
 	}
-	if ctrl.EKF.X[3] < 3000.0 {
-		t.Fatalf("EKF HALLUCINATION: Failed to snap Arrival to reality. Believes: %.2f", ctrl.EKF.X[3])
+	if ctrl.PredService.EKF.X[3] < 3000.0 {
+		t.Fatalf("EKF HALLUCINATION: Failed to snap Arrival to reality. Believes: %.2f", ctrl.PredService.EKF.X[3])
 	}
 }

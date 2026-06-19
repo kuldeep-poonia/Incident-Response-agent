@@ -20,13 +20,13 @@ func TestPerformance_ZeroAllocationHotPath(t *testing.T) {
 	zTelemetry := MeasurementVector{10.0, 0.05, 0.0, 100.0, 100.0}
 
 	// Run the controller tick once to allocate all buffers, caches, and RNG matrices
-	ctrl.Tick(zTelemetry, &sysState, mem, 1.0)
+	_ = ctrl.Recommend(zTelemetry, &sysState, mem, 1.0)
 
 	// Use Go's built-in allocation tracker
 	allocs := testing.AllocsPerRun(100, func() {
 		// Simulate normal load fluctuations
 		zTelemetry[4] += 1.0 
-		ctrl.Tick(zTelemetry, &sysState, mem, 1.0)
+		_ = ctrl.Recommend(zTelemetry, &sysState, mem, 1.0)
 	})
 
 	// ASSERTION: After boot, the hot path must execute with ZERO heap allocations.

@@ -169,8 +169,8 @@ func TestChaos_CascadingDeathSpiral(t *testing.T) {
 	mem := NewRegimeMemory(DefaultRegimeConfig())
 	plant := NewChaosPlant(42)
 
-	ctrl.EconCfg.InfraUSDPerSec = 0.0001
-	ctrl.EconCfg.SLABreachUSDPerSec = 1.0
+	ctrl.DecService.EconCfg.InfraUSDPerSec = 0.0001
+	ctrl.DecService.EconCfg.SLABreachUSDPerSec = 1.0
 
 	sysState := SystemState{
 		Replicas: 10, QueueLimit: 1000, RetryLimit: 3, PredictedArrival: 100.0,
@@ -215,7 +215,7 @@ encoder := json.NewEncoder(file)
 		}
 
 		zTelemetry := plant.Tick(1.0, ctrl.LastDecision)
-		sysState = ctrl.Tick(zTelemetry, &sysState, mem, 1.0)
+		_ = ctrl.Recommend(zTelemetry, &sysState, mem, 1.0)
 		cmd := ctrl.LastDecision
 
 		record := SimulationTick{
@@ -294,9 +294,9 @@ func TestChaos_MonteCarlo_10000_Scenarios(t *testing.T) {
 				runCost := 0.0
 				for step := 0; step < 10; step++ {
 					zTelemetry := plant.Tick(1.0, ctrl.LastDecision)
-					sysState = ctrl.Tick(zTelemetry, &sysState, mem, 1.0)
-					runCost += (float64(ctrl.LastDecision.Replicas) * ctrl.EconCfg.InfraUSDPerSec) +
-						(math.Max(0, sysState.Latency-sysState.SLATarget) * ctrl.EconCfg.SLABreachUSDPerSec)
+					_ = ctrl.Recommend(zTelemetry, &sysState, mem, 1.0)
+					runCost += (float64(ctrl.LastDecision.Replicas) * ctrl.DecService.EconCfg.InfraUSDPerSec) +
+						(math.Max(0, sysState.Latency-sysState.SLATarget) * ctrl.DecService.EconCfg.SLABreachUSDPerSec)
 				}
 				localCosts = append(localCosts, runCost)
 			}

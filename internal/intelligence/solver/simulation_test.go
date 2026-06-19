@@ -129,12 +129,12 @@ func TestRealWorld_FlashCrowd_And_RetryStorm(t *testing.T) {
 		zTelemetry := plant.Tick(dt, ctrl.LastDecision)
 
 		// B. The Autopilot thinks, calculates SDEs, MPC optimization, and returns a command
-		sysState = ctrl.Tick(zTelemetry, &sysState, mem, dt)
+		_ = ctrl.Recommend(zTelemetry, &sysState, mem, dt)
 		cmd := ctrl.LastDecision
 
 		// Calculate Current Second's Financial Burn
-		currentCost := (float64(cmd.Replicas) * ctrl.EconCfg.InfraUSDPerSec) + 
-			(math.Max(0, sysState.Latency-sysState.SLATarget) * ctrl.EconCfg.SLABreachUSDPerSec)
+		currentCost := (float64(cmd.Replicas) * ctrl.DecService.EconCfg.InfraUSDPerSec) + 
+			(math.Max(0, sysState.Latency-sysState.SLATarget) * ctrl.DecService.EconCfg.SLABreachUSDPerSec)
 		cumulativeCost += currentCost
 
 		// C. Print the exact truth every 5 seconds to observe the dynamic response

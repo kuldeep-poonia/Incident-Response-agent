@@ -1,8 +1,8 @@
 package engine
 
 import (
-	"github.com/qphysics/phaseshift/telemetry"
-	"github.com/qphysics/phaseshift/control"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/observability/telemetry"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/intelligence/solver"
 )
 
 // AdaptWindowToMeasurement converts the time-series window into the Kalman Filter's state vector.

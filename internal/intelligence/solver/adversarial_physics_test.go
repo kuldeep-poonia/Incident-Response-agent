@@ -28,7 +28,7 @@ func TestAdversarial_FrozenActuator(t *testing.T) {
 		plant.ReadyReplicas = 10.0
 
 		zTelemetry := plant.Tick(1.0, ctrl.LastDecision)
-		sysState = ctrl.Tick(zTelemetry, &sysState, mem, 1.0)
+		_ = ctrl.Recommend(zTelemetry, &sysState, mem, 1.0)
 	}
 
 	// ASSERTION: Because K8s is broken, the controller MUST have crushed the Envoy queue to shed load.
@@ -49,7 +49,7 @@ func TestAdversarial_ResonantSineWave(t *testing.T) {
 	sysState := SystemState{ Replicas: 10, QueueLimit: 1000, RetryLimit: 3, ServiceRate: 10.0, SLATarget: 0.100, Survival: 1.0, MaxReplicas: 1000 }
 
 	// The controller's internal Damping/Frequency config
-	tau := ctrl.ActuatorCfg.WarmupTau // ~30s
+	tau := 30.0 // ~30s
 	
 	// We attack the system with a sine wave perfectly matching its actuation delay
 	// to induce mathematical resonance (the hardest thing for a controller to handle).
@@ -58,7 +58,7 @@ func TestAdversarial_ResonantSineWave(t *testing.T) {
 		plant.TrueArrival = 1050.0 + 950.0*math.Sin((2.0*math.Pi/tau)*sec)
 
 		zTelemetry := plant.Tick(1.0, ctrl.LastDecision)
-		sysState = ctrl.Tick(zTelemetry, &sysState, mem, 1.0)
+		_ = ctrl.Recommend(zTelemetry, &sysState, mem, 1.0)
 	}
 
 	// ASSERTION: The controller must not have amplified the wave into a collapse.

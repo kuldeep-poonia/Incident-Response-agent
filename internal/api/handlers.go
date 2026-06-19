@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/qphysics/phaseshift/control"
-	"github.com/qphysics/phaseshift/internal/engine"
-	"github.com/qphysics/phaseshift/telemetry"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/intelligence/solver"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/engine"
+	"github.com/kuldeep-poonia/Incident-Response-agent/internal/observability/telemetry"
 )
 
 type API struct {
