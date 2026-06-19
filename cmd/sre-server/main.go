@@ -15,6 +15,9 @@ func main() {
 	http.HandleFunc("/metrics/ingest", serverAPI.HandleIngest)
 	http.HandleFunc("/incident/context", serverAPI.HandleContext)
 	http.HandleFunc("/decision/recommend", serverAPI.HandleRecommend)
+	
+	// NEW: Exposing the DeepSeek-V3 Post-Mortem Agent
+	http.HandleFunc("/incident/rca", serverAPI.HandleRCA)
 
 	log.Println("🤖 Agentic SRE Backend listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
