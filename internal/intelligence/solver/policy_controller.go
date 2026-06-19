@@ -57,6 +57,7 @@ func (cg *ConfidenceGate) Validate(conf ParameterConfidence, cfg ControllerConfi
 type Controller struct {
 	PredService *PredictionService
 	DecService  *DecisionService
+	SafeService *SafetyService
 	
 	SRObserver  *ServiceRateObserver
 
@@ -73,6 +74,7 @@ func NewController(baseSeed int64, minDeps, maxDeps int, ctrlCfg ControllerConfi
 	return &Controller{
 		PredService:  NewPredictionService(ctrlCfg),
 		DecService:   NewDecisionService(DefaultOptimizerConfig()),
+		SafeService:  NewSafetyService(),
 		
 		SRObserver:   &ServiceRateObserver{CurrentServiceRate: 10.0},
 		LastDecision: Bundle{Replicas: minDeps, QueueLimit: 1000.0, RetryLimit: 3, CacheAggression: 0.0},
@@ -121,36 +123,8 @@ func (c *Controller) Recommend(zTelemetry MeasurementVector, currentSysState *Sy
 	simCfg := c.PredService.GetSimConfig()
 	optimalBundle := c.DecService.GenerateOptimalDecision(currentSysState, simCfg, mem, c.MasterSeed)
 
-	// Mesh Ceiling Enforcements (The SLA-Aware Little's Law Physics Ceiling)
-	currentPhysicalCapacity := math.Max(0.001, float64(currentSysState.Replicas)*currentSysState.ServiceRate)
-	maxSlaQueue := currentPhysicalCapacity * currentSysState.SLATarget
-
-	absoluteMaxQueue := math.Max(25.0, maxSlaQueue * 1.5) 
-	
-	if optimalBundle.QueueLimit > absoluteMaxQueue {
-		optimalBundle.QueueLimit = absoluteMaxQueue
-	}
-	if optimalBundle.QueueLimit < 25.0 {
-		optimalBundle.QueueLimit = 25.0
-	}
-
-	currentQ := float64(c.LastDecision.QueueLimit)
-	maxDrop := math.Max(10.0, currentQ * 0.20)
-	if currentSysState.FailureMode != "Healthy" { maxDrop = currentQ * 0.90 } 
-	if optimalBundle.QueueLimit < currentQ - maxDrop {
-		optimalBundle.QueueLimit = currentQ - maxDrop
-	}
-	
-	maxRise := math.Max(5.0, currentQ * 0.05)
-	if currentSysState.RetryPressure > 10.0 { 
-		maxRise = 2.0 
-	} else if maxRise > 25.0 { 
-		maxRise = 25.0 
-	}
-	
-	if optimalBundle.QueueLimit > currentQ + maxRise {
-		optimalBundle.QueueLimit = currentQ + maxRise
-	}
+	// 5. Mesh Ceiling Enforcements via SafetyService
+	optimalBundle = c.SafeService.ApplySafetyConstraints(optimalBundle, currentSysState, c.LastDecision)
 
 	c.LastDecision = optimalBundle
 	c.MasterSeed++
