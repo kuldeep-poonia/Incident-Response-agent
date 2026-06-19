@@ -56,14 +56,11 @@ func (cg *ConfidenceGate) Validate(conf ParameterConfidence, cfg ControllerConfi
 
 type Controller struct {
 	PredService *PredictionService
-	MPC         *RobustMPC
+	DecService  *DecisionService
 	
 	SRObserver  *ServiceRateObserver
 
 	CtrlCfg     ControllerConfig
-	EconCfg     EconomicParams 
-	
-	GenCfg      GeneratorConfig
 	RegimeCfg   RegimeConfig   
 
 	LastDecision Bundle
@@ -75,7 +72,7 @@ func NewController(baseSeed int64, minDeps, maxDeps int, ctrlCfg ControllerConfi
 
 	return &Controller{
 		PredService:  NewPredictionService(ctrlCfg),
-		MPC:          NewRobustMPC(DefaultOptimizerConfig()),
+		DecService:   NewDecisionService(DefaultOptimizerConfig()),
 		
 		SRObserver:   &ServiceRateObserver{CurrentServiceRate: 10.0},
 		LastDecision: Bundle{Replicas: minDeps, QueueLimit: 1000.0, RetryLimit: 3, CacheAggression: 0.0},
@@ -83,9 +80,6 @@ func NewController(baseSeed int64, minDeps, maxDeps int, ctrlCfg ControllerConfi
 		
 		CtrlCfg:     ctrlCfg,
 		RegimeCfg:   DefaultRegimeConfig(),
-		EconCfg:     DefaultEconomicParams(),
-		
-		GenCfg:      DefaultGeneratorConfig(),
 	}
 }
 
@@ -123,19 +117,9 @@ func (c *Controller) Recommend(zTelemetry MeasurementVector, currentSysState *Sy
 	// 3. Online Learning (SysID) via PredictionService
 	c.PredService.UpdateModel(currentSysState, dt)
 
-	// 4. Candidate Generation & MPC Optimization
-	physicalRequiredCapacity := currentSysState.PredictedArrival / math.Max(0.001, currentSysState.ServiceRate)
-	if float64(currentSysState.Replicas) > physicalRequiredCapacity * 1.5 {
-		c.GenCfg.MaxScaleSurge = 0 
-	} else if currentSysState.Utilisation < 0.5 && currentSysState.QueueDepth < 10.0 {
-		c.GenCfg.MaxScaleSurge = 5 
-	} else {
-		c.GenCfg.MaxScaleSurge = 100 
-	}
-
+	// 4. Decision Generation & MPC Optimization via DecisionService
 	simCfg := c.PredService.GetSimConfig()
-	candidates := GenerateBundles(*currentSysState, c.GenCfg, simCfg)
-	optimalBundle := c.MPC.Optimize(*currentSysState, candidates, simCfg, c.EconCfg, mem, c.MasterSeed)
+	optimalBundle := c.DecService.GenerateOptimalDecision(currentSysState, simCfg, mem, c.MasterSeed)
 
 	// Mesh Ceiling Enforcements (The SLA-Aware Little's Law Physics Ceiling)
 	currentPhysicalCapacity := math.Max(0.001, float64(currentSysState.Replicas)*currentSysState.ServiceRate)
