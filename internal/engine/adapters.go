@@ -29,5 +29,6 @@ func EnsureDefaultState(s *control.SystemState) {
 		s.MaxRetry = 5
 		s.Survival = 1.0
 		s.PredictedArrival = 100.0
+		s.FailureMode = "Healthy"
 	}
 }

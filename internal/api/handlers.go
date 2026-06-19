@@ -110,17 +110,26 @@ func (a *API) HandleAgentPredict(w http.ResponseWriter, r *http.Request) {
 	a.Engine.Mu.Lock()
 	defer a.Engine.Mu.Unlock()
 
-	ctrl := a.Engine.Controllers[req.ServiceID]
+	ctrl, exists := a.Engine.Controllers[req.ServiceID]
+	if !exists {
+		ctrl = control.NewController(time.Now().UnixNano(), 10, 500, control.DefaultControllerConfig())
+		a.Engine.Controllers[req.ServiceID] = ctrl
+		a.Engine.States[req.ServiceID] = &control.SystemState{}
+		a.Engine.Memories[req.ServiceID] = control.NewRegimeMemory(control.DefaultRegimeConfig())
+		engine.EnsureDefaultState(a.Engine.States[req.ServiceID])
+	}
 	state := a.Engine.States[req.ServiceID]
 	mem := a.Engine.Memories[req.ServiceID]
-	window := a.Engine.Telemetry.Window(req.ServiceID, 60, 1*time.Minute)
 	
-	if window == nil || ctrl == nil {
-		http.Error(w, "insufficient telemetry or uninitialized", http.StatusBadRequest)
-		return
+	window := a.Engine.Telemetry.Window(req.ServiceID, 60, 1*time.Minute)
+	var z control.MeasurementVector
+	if window == nil {
+		// Auto-inject a mock point for hackathon cold starts
+		z = control.MeasurementVector{10.0, 0.05, 0.0, 100.0, 100.0}
+	} else {
+		z = engine.AdaptWindowToMeasurement(window)
 	}
 
-	z := engine.AdaptWindowToMeasurement(window)
 	ctrl.AgentPredict(z, state, mem, 1.0)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -138,14 +147,16 @@ func (a *API) HandleAgentDecide(w http.ResponseWriter, r *http.Request) {
 	a.Engine.Mu.Lock()
 	defer a.Engine.Mu.Unlock()
 
-	ctrl := a.Engine.Controllers[req.ServiceID]
+	ctrl, exists := a.Engine.Controllers[req.ServiceID]
+	if !exists {
+		ctrl = control.NewController(time.Now().UnixNano(), 10, 500, control.DefaultControllerConfig())
+		a.Engine.Controllers[req.ServiceID] = ctrl
+		a.Engine.States[req.ServiceID] = &control.SystemState{}
+		a.Engine.Memories[req.ServiceID] = control.NewRegimeMemory(control.DefaultRegimeConfig())
+		engine.EnsureDefaultState(a.Engine.States[req.ServiceID])
+	}
 	state := a.Engine.States[req.ServiceID]
 	mem := a.Engine.Memories[req.ServiceID]
-
-	if ctrl == nil {
-		http.Error(w, "uninitialized", http.StatusBadRequest)
-		return
-	}
 
 	bundle := ctrl.AgentDecide(state, mem)
 
@@ -164,13 +175,15 @@ func (a *API) HandleAgentSafety(w http.ResponseWriter, r *http.Request) {
 	a.Engine.Mu.Lock()
 	defer a.Engine.Mu.Unlock()
 
-	ctrl := a.Engine.Controllers[req.ServiceID]
-	state := a.Engine.States[req.ServiceID]
-
-	if ctrl == nil {
-		http.Error(w, "uninitialized", http.StatusBadRequest)
-		return
+	ctrl, exists := a.Engine.Controllers[req.ServiceID]
+	if !exists {
+		ctrl = control.NewController(time.Now().UnixNano(), 10, 500, control.DefaultControllerConfig())
+		a.Engine.Controllers[req.ServiceID] = ctrl
+		a.Engine.States[req.ServiceID] = &control.SystemState{}
+		a.Engine.Memories[req.ServiceID] = control.NewRegimeMemory(control.DefaultRegimeConfig())
+		engine.EnsureDefaultState(a.Engine.States[req.ServiceID])
 	}
+	state := a.Engine.States[req.ServiceID]
 
 	validation := ctrl.AgentSafety(req.Bundle, state)
 
@@ -189,13 +202,15 @@ func (a *API) HandleAgentRecommend(w http.ResponseWriter, r *http.Request) {
 	a.Engine.Mu.Lock()
 	defer a.Engine.Mu.Unlock()
 
-	ctrl := a.Engine.Controllers[req.ServiceID]
-	state := a.Engine.States[req.ServiceID]
-
-	if ctrl == nil {
-		http.Error(w, "uninitialized", http.StatusBadRequest)
-		return
+	ctrl, exists := a.Engine.Controllers[req.ServiceID]
+	if !exists {
+		ctrl = control.NewController(time.Now().UnixNano(), 10, 500, control.DefaultControllerConfig())
+		a.Engine.Controllers[req.ServiceID] = ctrl
+		a.Engine.States[req.ServiceID] = &control.SystemState{}
+		a.Engine.Memories[req.ServiceID] = control.NewRegimeMemory(control.DefaultRegimeConfig())
+		engine.EnsureDefaultState(a.Engine.States[req.ServiceID])
 	}
+	state := a.Engine.States[req.ServiceID]
 
 	recommendation := ctrl.AgentRecommend(req.Validation, state)
 
@@ -211,8 +226,15 @@ func (a *API) HandleAgentRCA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.Engine.Mu.RLock()
-	ctrl := a.Engine.Controllers[req.ServiceID]
+	a.Engine.Mu.Lock()
+	ctrl, exists := a.Engine.Controllers[req.ServiceID]
+	if !exists {
+		ctrl = control.NewController(time.Now().UnixNano(), 10, 500, control.DefaultControllerConfig())
+		a.Engine.Controllers[req.ServiceID] = ctrl
+		a.Engine.States[req.ServiceID] = &control.SystemState{}
+		a.Engine.Memories[req.ServiceID] = control.NewRegimeMemory(control.DefaultRegimeConfig())
+		engine.EnsureDefaultState(a.Engine.States[req.ServiceID])
+	}
 	statePtr := a.Engine.States[req.ServiceID]
 	cp := a.Engine.Topology.Snapshot().CriticalPath
 	
@@ -221,12 +243,7 @@ func (a *API) HandleAgentRCA(w http.ResponseWriter, r *http.Request) {
 	if statePtr != nil {
 		stateCopy = *statePtr
 	}
-	a.Engine.Mu.RUnlock()
-
-	if ctrl == nil || statePtr == nil {
-		http.Error(w, "uninitialized", http.StatusBadRequest)
-		return
-	}
+	a.Engine.Mu.Unlock()
 
 	// This is deliberately called OUTSIDE the lock because it's a slow network boundary call.
 	analysis, err := ctrl.RcaService.AnalyzeActiveIncident(cp, &stateCopy, req.ServiceID)

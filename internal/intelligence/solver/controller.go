@@ -67,6 +67,7 @@ type Controller struct {
 	RegimeCfg   RegimeConfig   
 
 	LastDecision Bundle
+	LastValidation SafetyValidationResult
 	MasterSeed   int64
 }
 
@@ -138,15 +139,22 @@ func (c *Controller) AgentDecide(currentSysState *SystemState, mem *RegimeMemory
 }
 
 func (c *Controller) AgentSafety(optimalBundle Bundle, currentSysState *SystemState) SafetyValidationResult {
-	return c.SafeService.ValidateAction(optimalBundle, currentSysState, c.LastDecision)
+	val := c.SafeService.ValidateAction(optimalBundle, currentSysState, c.LastDecision)
+	c.LastValidation = val
+	return val
 }
 
 func (c *Controller) AgentRecommend(validationResult SafetyValidationResult, currentSysState *SystemState) Recommendation {
+	if validationResult.SafeBundle.Replicas == 0 && c.LastValidation.SafeBundle.Replicas != 0 {
+		validationResult = c.LastValidation
+	}
+	
 	safeBundle := validationResult.SafeBundle
 	sysIdConfidence := c.PredService.SysID.Confidence()
 	recommendation := c.RecService.GenerateRecommendation(currentSysState, c.LastDecision, safeBundle, validationResult, sysIdConfidence)
 
 	c.LastDecision = safeBundle
+	c.LastValidation = validationResult
 	c.MasterSeed++
 	return recommendation
 }
