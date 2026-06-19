@@ -59,7 +59,7 @@ type Controller struct {
 	SysID       *SystemIdentifier
 	ParamEst    *ParameterEstimator 
 	MPC         *RobustMPC
-	ActState    *ActuatorState
+	
 	SRObserver  *ServiceRateObserver
 	Calibrator  *CalibrationManager
 	GateKeeper  *ConfidenceGate
@@ -67,7 +67,7 @@ type Controller struct {
 	CtrlCfg     ControllerConfig
 	SimCfg      SimConfig      
 	EconCfg     EconomicParams 
-	ActuatorCfg ActuatorConfig 
+	
 	GenCfg      GeneratorConfig
 	RegimeCfg   RegimeConfig   
 
@@ -83,7 +83,7 @@ func NewController(baseSeed int64, minDeps, maxDeps int, ctrlCfg ControllerConfi
 		SysID:        NewSystemIdentifier(),
 		ParamEst:     NewParameterEstimator(), 
 		MPC:          NewRobustMPC(DefaultOptimizerConfig()),
-		ActState:     &ActuatorState{ReadyReplicas: float64(minDeps), TargetReplicas: minDeps, SafeModeTicks: 0},
+		
 		SRObserver:   &ServiceRateObserver{CurrentServiceRate: 10.0},
 		Calibrator:   &CalibrationManager{TimeElapsed: 0.0, IsCalibrated: false},
 		GateKeeper:   &ConfidenceGate{},
@@ -93,7 +93,7 @@ func NewController(baseSeed int64, minDeps, maxDeps int, ctrlCfg ControllerConfi
 		CtrlCfg:     ctrlCfg,
 		RegimeCfg:   DefaultRegimeConfig(),
 		EconCfg:     DefaultEconomicParams(),
-		ActuatorCfg: DefaultActuatorConfig(),
+		
 		GenCfg:      DefaultGeneratorConfig(),
 		SimCfg: SimConfig{
 			HorizonSteps:      ctrlCfg.DefaultHorizonSteps,
@@ -114,7 +114,7 @@ func NewController(baseSeed int64, minDeps, maxDeps int, ctrlCfg ControllerConfi
 	}
 }
 
-func (c *Controller) Tick(zTelemetry MeasurementVector, currentSysState *SystemState, mem *RegimeMemory, dt float64) SystemState {
+func (c *Controller) Recommend(zTelemetry MeasurementVector, currentSysState *SystemState, mem *RegimeMemory, dt float64) Bundle {
 	if dt <= 0.0 { dt = c.SimCfg.Dt }
 
 	// Byzantine Fault Shield
@@ -130,8 +130,6 @@ func (c *Controller) Tick(zTelemetry MeasurementVector, currentSysState *SystemS
 		}
 	}
 
-	c.ActuatorCfg.MinReplicas = currentSysState.MinReplicas
-	c.ActuatorCfg.MaxReplicas = currentSysState.MaxReplicas
 
 	var inputU ControlVector
 	inputU[0] = float64(c.LastDecision.Replicas) * currentSysState.ServiceRate
@@ -148,7 +146,7 @@ func (c *Controller) Tick(zTelemetry MeasurementVector, currentSysState *SystemS
 	currentSysState.PredictedArrival = math.Max(0.001, filteredState[3])
 	currentSysState.CapacityVelocity = filteredState[4]
 
-	currentActiveReplicas := int(math.Round(c.ActState.ReadyReplicas))
+	currentActiveReplicas := currentSysState.Replicas
 	if currentActiveReplicas < 1 { currentActiveReplicas = 1 }
 
 	currentSysState.ServiceRate = c.SRObserver.Observe([5]float64(zTelemetry), currentActiveReplicas, c.CtrlCfg)
@@ -175,34 +173,6 @@ func (c *Controller) Tick(zTelemetry MeasurementVector, currentSysState *SystemS
 
 	if mem != nil { mem.Update(*currentSysState, currentSysState.SLATarget, 0.0, c.RegimeCfg) }
 
-	isControlPlanePartitioned := zTelemetry[0] > 3000.0 && zTelemetry[0] > float64(c.LastDecision.QueueLimit)*5.0
-	isObservabilityBroken := (observedLatency > 5.0) && (filteredState[0] < 10.0)
-
-	if isControlPlanePartitioned || isObservabilityBroken || c.ActState.SafeModeTicks > 0 {
-		if isControlPlanePartitioned || isObservabilityBroken { c.ActState.SafeModeTicks = 15.0 }
-		c.ActState.SafeModeTicks -= dt
-		
-		currentSysState.FailureMode = "NetworkPartition_SafeMode"
-		
-		safeTarget := c.ActState.TargetReplicas + 2 
-		safeTarget = int(math.Min(float64(currentSysState.MaxReplicas), float64(safeTarget)))
-		
-		maxSafeRise := 25.0
-		if currentSysState.RetryPressure > 10.0 { maxSafeRise = 2.0 }
-		
-		safeQueue := float64(c.LastDecision.QueueLimit) + maxSafeRise 
-		if safeQueue > 1000.0 { safeQueue = 1000.0 }
-		
-		safeBundle := Bundle{
-			Replicas:        safeTarget,
-			QueueLimit:      safeQueue,
-			RetryLimit:      c.LastDecision.RetryLimit,
-			CacheAggression: 1.0,
-		}
-		c.LastDecision = safeBundle
-		ApplyActuatorDynamics(currentSysState, c.ActState, safeBundle, c.ActuatorCfg, dt)
-		return *currentSysState
-	}
 
 	currentObs := Observation{ Queue: currentSysState.QueueDepth, Latency: currentSysState.Latency, Retry: currentSysState.RetryPressure, Arrival: currentSysState.PredictedArrival, Capacity: filteredState[2], Time: c.Calibrator.TimeElapsed }
 	if c.Calibrator.Track(dt, c.CtrlCfg) {
@@ -214,7 +184,7 @@ func (c *Controller) Tick(zTelemetry MeasurementVector, currentSysState *SystemS
 	}
 
 	physicalRequiredCapacity := currentSysState.PredictedArrival / math.Max(0.001, currentSysState.ServiceRate)
-	if float64(c.ActState.TargetReplicas) > physicalRequiredCapacity * 1.5 {
+	if float64(currentSysState.Replicas) > physicalRequiredCapacity * 1.5 {
 		c.GenCfg.MaxScaleSurge = 0 
 	} else if currentSysState.Utilisation < 0.5 && currentSysState.QueueDepth < 10.0 {
 		c.GenCfg.MaxScaleSurge = 5 
@@ -225,17 +195,14 @@ func (c *Controller) Tick(zTelemetry MeasurementVector, currentSysState *SystemS
 	candidates := GenerateBundles(*currentSysState, c.GenCfg, c.SimCfg)
 	optimalBundle := c.MPC.Optimize(*currentSysState, candidates, c.SimCfg, c.EconCfg, mem, c.MasterSeed)
 
-	maxPodJump := int(math.Max(10.0, float64(c.ActState.TargetReplicas)*0.15))
-	if optimalBundle.Replicas > c.ActState.TargetReplicas + maxPodJump {
-		optimalBundle.Replicas = c.ActState.TargetReplicas + maxPodJump
-	}
+	
 
 	// ========================================================================
 	// THE FINAL CURE: SLA-AWARE LITTLE'S LAW MESH CEILING
 	// We override the capitalist MPC with a strict Engineering Physics Ceiling.
 	// Max Allowed Queue = Realtime Capacity * SLA Target
 	// ========================================================================
-	currentPhysicalCapacity := math.Max(0.001, float64(c.ActState.ReadyReplicas)*currentSysState.ServiceRate)
+	currentPhysicalCapacity := math.Max(0.001, float64(currentSysState.Replicas)*currentSysState.ServiceRate)
 	maxSlaQueue := currentPhysicalCapacity * currentSysState.SLATarget
 
 	// We ruthlessly clamp the ceiling to the exact SLA boundary, but allow a 
@@ -270,10 +237,10 @@ func (c *Controller) Tick(zTelemetry MeasurementVector, currentSysState *SystemS
 	}
 
 	c.LastDecision = optimalBundle
-	ApplyActuatorDynamics(currentSysState, c.ActState, optimalBundle, c.ActuatorCfg, dt)
+	
 
 	c.MasterSeed++
-	return *currentSysState
+	return optimalBundle
 }
 
 
