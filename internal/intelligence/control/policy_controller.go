@@ -275,3 +275,96 @@ func (c *Controller) Tick(zTelemetry MeasurementVector, currentSysState *SystemS
 	c.MasterSeed++
 	return *currentSysState
 }
+
+
+
+// Append this to the end of uipath/control/policy_controller.go
+
+// Recommend runs the core intelligence loop (EKF + MPC) based on real-world telemetry
+// to generate an optimal action, but relies on external execution (UiPath).
+func (c *Controller) Recommend(zTelemetry MeasurementVector, currentSysState *SystemState, mem *RegimeMemory, dt float64) Bundle {
+	if dt <= 0.0 { dt = c.SimCfg.Dt }
+
+	// 1. Byzantine Fault Shield
+	for i := 0; i < 5; i++ {
+		if math.IsNaN(zTelemetry[i]) || math.IsInf(zTelemetry[i], 0) {
+			switch i {
+			case 0: zTelemetry[0] = currentSysState.QueueDepth
+			case 1: zTelemetry[1] = currentSysState.Latency
+			case 2: zTelemetry[2] = currentSysState.RetryPressure
+			case 3: zTelemetry[3] = math.Max(0.001, float64(currentSysState.Replicas)*currentSysState.ServiceRate)
+			case 4: zTelemetry[4] = currentSysState.PredictedArrival
+			}
+		}
+	}
+
+	// 2. State Estimation (EKF Predict & Update)
+	var inputU ControlVector
+	inputU[0] = float64(c.LastDecision.Replicas) * currentSysState.ServiceRate
+	inputU[1] = c.LastDecision.QueueLimit
+	inputU[2] = c.LastDecision.CacheAggression
+
+	c.EKF.Predict(inputU, *currentSysState, c.SimCfg, dt)
+	c.EKF.Update(zTelemetry)
+	filteredState := c.EKF.X
+
+	// Map filtered state back to current system state
+	currentSysState.QueueDepth = math.Max(0.0, filteredState[0])
+	currentSysState.RetryPressure = math.Max(0.0, filteredState[1])
+	currentSysState.PredictedArrival = math.Max(0.001, filteredState[3])
+	currentSysState.CapacityVelocity = filteredState[4]
+
+	currentActiveReplicas := currentSysState.Replicas
+	if currentActiveReplicas < 1 { currentActiveReplicas = 1 }
+
+	currentSysState.ServiceRate = c.SRObserver.Observe([5]float64(zTelemetry), currentActiveReplicas, c.CtrlCfg)
+	currentSysState.Utilisation = currentSysState.PredictedArrival / math.Max(filteredState[2], 0.001)
+
+	predictedLatency := ComputeLatency(currentSysState.QueueDepth, currentSysState.PredictedArrival, filteredState[2], c.SimCfg.BaseLatency, c.SimCfg.MaxQueueDelay)
+	observedLatency := zTelemetry[1] 
+	currentSysState.Latency = (0.1 * math.Min(predictedLatency, 10.0)) + (0.9 * observedLatency)
+
+	// Risk calculation
+	qRisk := currentSysState.QueueDepth / math.Max(1.0, float64(c.LastDecision.QueueLimit))
+	lRisk := currentSysState.Latency / math.Max(0.001, currentSysState.SLATarget) 
+	rRisk := currentSysState.RetryPressure / 5.0 
+	currentSysState.Risk = qRisk + lRisk + rRisk 
+
+	if mem != nil { mem.Update(*currentSysState, currentSysState.SLATarget, 0.0, c.RegimeCfg) }
+
+	// 3. Online Learning (SysID)
+	currentObs := Observation{ Queue: currentSysState.QueueDepth, Latency: currentSysState.Latency, Retry: currentSysState.RetryPressure, Arrival: currentSysState.PredictedArrival, Capacity: filteredState[2], Time: c.Calibrator.TimeElapsed }
+	if c.Calibrator.Track(dt, c.CtrlCfg) {
+		c.SysID.Update(currentObs)
+		if c.GateKeeper.Validate(c.SysID.Confidence(), c.CtrlCfg) {
+			c.ParamEst.Update(c.SysID.Parameters(), c.SysID.Confidence())
+			c.ParamEst.Apply(&c.SimCfg)
+		}
+	}
+
+	// 4. Candidate Generation & MPC Optimization
+	physicalRequiredCapacity := currentSysState.PredictedArrival / math.Max(0.001, currentSysState.ServiceRate)
+	if float64(currentSysState.Replicas) > physicalRequiredCapacity * 1.5 {
+		c.GenCfg.MaxScaleSurge = 0 
+	} else if currentSysState.Utilisation < 0.5 && currentSysState.QueueDepth < 10.0 {
+		c.GenCfg.MaxScaleSurge = 5 
+	} else {
+		c.GenCfg.MaxScaleSurge = 100 
+	}
+
+	candidates := GenerateBundles(*currentSysState, c.GenCfg, c.SimCfg)
+	optimalBundle := c.MPC.Optimize(*currentSysState, candidates, c.SimCfg, c.EconCfg, mem, c.MasterSeed)
+
+	// Mesh Ceiling Enforcements
+	currentPhysicalCapacity := math.Max(0.001, float64(currentSysState.Replicas)*currentSysState.ServiceRate)
+	absoluteMaxQueue := math.Max(25.0, (currentPhysicalCapacity * currentSysState.SLATarget) * 1.5)
+	if optimalBundle.QueueLimit > absoluteMaxQueue { optimalBundle.QueueLimit = absoluteMaxQueue }
+	if optimalBundle.QueueLimit < 25.0 { optimalBundle.QueueLimit = 25.0 }
+
+	c.LastDecision = optimalBundle
+	c.MasterSeed++
+	
+	// CRITICAL: We return the decision, but we DO NOT simulate `ApplyActuatorDynamics`.
+	// UiPath owns the execution now.
+	return optimalBundle
+}
