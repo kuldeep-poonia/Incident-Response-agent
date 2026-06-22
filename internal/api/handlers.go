@@ -81,9 +81,9 @@ func (a *API) HandleRecommend(w http.ResponseWriter, r *http.Request) {
 }
 
 
-// ============================================================================
-// PHASE 5: MAESTRO INDEPENDENT AGENT ENDPOINTS
-// ============================================================================
+
+// maestro independent agent
+
 
 type MaestroRequest struct {
 	ServiceID string `json:"service_id"`
