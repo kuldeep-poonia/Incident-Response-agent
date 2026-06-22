@@ -140,15 +140,11 @@ sequenceDiagram
     M->>M: Execute Infrastructure Changes
 ```
 
----
+## 7. Web Dashboard UI
 
-## 7. Demo Walkthrough
+The platform includes a lightweight, vanilla HTML/JS/CSS dashboard (`index.html`) that simulates the UiPath Maestro orchestration.
 
-For the UiPath AgentHack demonstration:
-1.  **Inject Failure:** Trigger chaotic downstream latency.
-2.  **Alert Fires:** Prometheus fires the webhook to UiPath Maestro.
-3.  **Maestro Studio:** Show the Workflow executing in real-time. Nodes light up: `Predict` -> `Decide` -> `Safety`.
-4.  **RCA Magic:** Highlight the concurrent execution of the LLM RCA node pulling the exact topology bottleneck.
-5.  **Human Approval Pause:** Show the workflow halting at the Action Center node. 
-6.  **Review the Output:** Open Action Center. Emphasize that the LLM is **advisory** and the remediation action is derived from **hard Control Theory physics** (CVaR optimization + Little's Law limits).
-7.  **Execution:** Click "Approve". Show the system instantly dropping queues (`ShedLoad`) to preserve the SLA, preventing the simulated outage.
+*   **Design:** Premium dark-mode aesthetics with glassmorphism to provide a modern "Command Center" feel.
+*   **Parallel Execution:** The Javascript `fetch()` API concurrently queries `/agent/predict` and `/agent/rca`, mirroring the exact parallel gateway logic defined in the Maestro BPMN.
+*   **Sequential Decision Making:** The UI awaits the mathematical outputs before enabling the auto-mitigation controls, demonstrating the "Safety First" constraints of the system.
+*   **Zero-Dependency:** Hosted directly from the Go API backend on port 8080 to prevent CORS issues without requiring heavy web frameworks like React or Next.js.

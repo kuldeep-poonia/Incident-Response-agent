@@ -19,6 +19,12 @@ func main() {
 	http.HandleFunc("/agent/recommend", serverAPI.HandleAgentRecommend)
 	http.HandleFunc("/agent/rca", serverAPI.HandleAgentRCA)
 
+	// Serve the UI Dashboard
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "index.html")
+	})
+
 	log.Println("🤖 Agentic SRE Backend listening on :8080")
+	log.Println("🌐 Dashboard available at http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autonomous SRE Agent</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #020617;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --border: rgba(255, 255, 255, 0.1);
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.5);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at 50% 0%, #1e293b 0%, transparent 50%);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle { color: var(--text-muted); margin-bottom: 3rem; }
+
+        .glass-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .glass-card:hover { transform: translateY(-2px); box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4); }
+
+        .control-panel {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        input {
+            flex: 1;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+            color: white;
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus { border-color: var(--primary); }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+        button:hover { background: #2563eb; transform: scale(1.02); }
+        button:disabled { background: #475569; cursor: not-allowed; box-shadow: none; transform: none; }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 1200px;
+            opacity: 0.5;
+            pointer-events: none;
+            transition: opacity 0.4s;
+        }
+        .dashboard-grid.active { opacity: 1; pointer-events: auto; }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.8rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .metric:last-child { border-bottom: none; }
+        .metric-label { color: var(--text-muted); font-size: 0.9rem; }
+        .metric-value { font-weight: 600; font-family: monospace; font-size: 1.1rem; }
+
+        .loader {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            display: none;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+        .bg-danger { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+        .bg-success { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+
+        pre {
+            background: rgba(0,0,0,0.5);
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: #a78bfa;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            margin-top: 1rem;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>Autonomous Action Center</h1>
+    <p class="subtitle">AI-Driven Mathematical SRE Orchestration</p>
+
+    <div class="control-panel glass-card">
+        <input type="text" id="serviceId" value="payment-gateway" placeholder="Enter Service ID">
+        <button id="btnAnalyze" onclick="runDiagnostics()">
+            <span id="btnText">Run Diagnostics</span>
+            <div class="loader" id="loaderAnalyze"></div>
+        </button>
+    </div>
+
+    <div class="dashboard-grid" id="dashboard">
+        
+        <!-- Predictive Math Agent -->
+        <div class="glass-card">
+            <h3 style="margin-bottom: 1rem; color: #60a5fa;">📐 Predict Agent (Kalman Math)</h3>
+            <div class="metric">
+                <span class="metric-label">Predicted Arrival Rate</span>
+                <span class="metric-value" id="valArrival">-</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Queue Depth</span>
+                <span class="metric-value" id="valQueue">-</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">System Risk Score</span>
+                <span class="metric-value bg-success status-badge" id="valRisk">0.00</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Failure Mode</span>
+                <span class="metric-value" id="valFailure">-</span>
+            </div>
+        </div>
+
+        <!-- RCA LLM Agent -->
+        <div class="glass-card">
+            <h3 style="margin-bottom: 1rem; color: #a78bfa;">🧠 RCA Agent (GenAI)</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem;">Root Cause Analysis:</p>
+            <pre id="valRCA">Waiting for analysis...</pre>
+            <div class="metric" style="margin-top: 1rem; border:none; padding:0;">
+                <span class="metric-label">LLM Confidence</span>
+                <span class="metric-value" id="valRcaConf">-</span>
+            </div>
+        </div>
+
+        <!-- Mitigation Agent -->
+        <div class="glass-card" style="grid-column: 1 / -1; display: flex; flex-direction: column;">
+            <h3 style="margin-bottom: 1rem; color: #10b981;">🛡️ Mitigation Strategy (Decide & Recommend)</h3>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                <div>
+                    <div class="metric"><span class="metric-label">Action</span><span class="metric-value" id="valAction">-</span></div>
+                    <div class="metric"><span class="metric-label">Confidence Score</span><span class="metric-value" id="valRecommendConf">-</span></div>
+                </div>
+                <div>
+                    <div class="metric"><span class="metric-label">Target Replicas</span><span class="metric-value" id="valReplicas">-</span></div>
+                    <div class="metric"><span class="metric-label">Safety Verified</span><span class="metric-value" id="valSafety">-</span></div>
+                </div>
+            </div>
+
+            <p style="color: var(--text-muted); font-size: 0.9rem;">Reasoning:</p>
+            <pre id="valReasoning" style="color: #6ee7b7; margin-bottom: 1.5rem;">Awaiting recommendation engine...</pre>
+
+            <button id="btnMitigate" onclick="executeMitigation()" disabled style="background: var(--success); align-self: flex-end;">
+                Execute Auto-Mitigation
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:8080/agent";
+
+        async function post(endpoint, serviceId) {
+            const res = await fetch(`${API_BASE}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ service_id: serviceId })
+            });
+            return res.json();
+        }
+
+        async function runDiagnostics() {
+            const svc = document.getElementById("serviceId").value;
+            const btn = document.getElementById("btnAnalyze");
+            const text = document.getElementById("btnText");
+            const loader = document.getElementById("loaderAnalyze");
+            
+            btn.disabled = true;
+            text.style.display = "none";
+            loader.style.display = "inline-block";
+
+            document.getElementById("dashboard").classList.add("active");
+
+            try {
+                // Run Predict and RCA in parallel (just like the BPMN Diagram!)
+                const [predict, rca] = await Promise.all([
+                    post("/predict", svc),
+                    post("/rca", svc)
+                ]);
+
+                // Update Predict UI
+                document.getElementById("valArrival").innerText = predict.PredictedArrival?.toFixed(2) || "0.00";
+                document.getElementById("valQueue").innerText = predict.QueueDepth || "0";
+                
+                const risk = document.getElementById("valRisk");
+                risk.innerText = predict.Risk?.toFixed(2) || "0.00";
+                if(predict.Risk > 1) { risk.className = "metric-value bg-danger status-badge"; }
+                else { risk.className = "metric-value bg-success status-badge"; }
+
+                document.getElementById("valFailure").innerText = predict.FailureMode || "Healthy";
+
+                // Update RCA UI
+                document.getElementById("valRCA").innerText = rca.suspected_root_cause + "\n\n" + rca.explanation;
+                document.getElementById("valRcaConf").innerText = (rca.confidence * 100) + "%";
+
+                // Now run the mathematical decision pipeline sequentially
+                await post("/decide", svc);
+                await post("/safety", svc);
+                const rec = await post("/recommend", svc);
+
+                // Update Mitigation UI
+                document.getElementById("valAction").innerText = rec.recommended_action;
+                document.getElementById("valRecommendConf").innerText = (rec.confidence * 100) + "%";
+                document.getElementById("valReplicas").innerText = rec.recommended_bundle?.Replicas || "0";
+                document.getElementById("valSafety").innerText = rec.safety_verified ? "✅ PASS" : "❌ FAIL";
+                document.getElementById("valReasoning").innerText = (rec.reasoning || []).join("\n");
+
+                // Enable Auto-Mitigate if confidence is high (mimicking the BPMN X Gateway)
+                const mitigateBtn = document.getElementById("btnMitigate");
+                if (rec.confidence > 0.8 && rec.safety_verified) {
+                    mitigateBtn.disabled = false;
+                    mitigateBtn.innerText = "Execute Auto-Mitigation (High Confidence)";
+                } else {
+                    mitigateBtn.disabled = true;
+                    mitigateBtn.innerText = "Requires Human Action Center Approval";
+                }
+
+            } catch (err) {
+                console.error(err);
+                alert("API Error. Ensure the Go backend is running locally on port 8080.");
+            } finally {
+                btn.disabled = false;
+                text.style.display = "inline";
+                loader.style.display = "none";
+            }
+        }
+
+        function executeMitigation() {
+            alert("✅ Mitigation Executed! The system scale commands have been pushed to Kubernetes.");
+            document.getElementById("btnMitigate").innerText = "Mitigation Complete";
+            document.getElementById("btnMitigate").disabled = true;
+        }
+    </script>
+</body>
+</html>
